@@ -627,3 +627,112 @@ As you can see, the aspect successfully intercepted the methods in each layer an
   * **Proxy Limitations:** Spring AOP works by creating proxies (either JDK dynamic proxies or CGLIB proxies). This means that AOP will only apply to method calls made from *outside* the advised object. If `this.someMethod()` is called from within the same class, the advice won't be applied.
 
 This setup provides a robust foundation for monitoring method execution times across your Spring Boot application layers. You can extend this further by integrating with metrics systems (e.g., Micrometer, Prometheus) or logging to a dedicated performance monitoring system.
+
+ProceedingJoinPoint
+-------------------
+The `ProceedingJoinPoint` in Spring AOP is a powerful interface that's specifically used with **`@Around` advice**. It represents the method that's currently being advised, and it gives you control over its execution.
+
+-----
+
+## Full Syntax of `ProceedingJoinPoint`
+
+You don't declare `ProceedingJoinPoint` itself in terms of "syntax" as you would a class or a method. Instead, you declare it as a **parameter in your `@Around` advice method**.
+
+Here's the typical full syntax for using `ProceedingJoinPoint` in an `@Around` advice:
+
+```java
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+@Aspect
+@Component
+public class MyAroundAspect {
+
+    // Define a pointcut (e.g., for all methods in a service layer)
+    @Pointcut("execution(* com.example.service.*.*(..))")
+    public void serviceLayerMethods() {}
+
+    /**
+     * This is the @Around advice method.
+     * It takes ProceedingJoinPoint as a parameter.
+     */
+    @Around("serviceLayerMethods()") // Apply this advice to the 'serviceLayerMethods' pointcut
+    public Object myAroundAdviceMethod(ProceedingJoinPoint joinPoint) throws Throwable {
+
+        // --- Before Method Execution ---
+        // You can inspect the method signature, arguments, target object, etc.
+        String methodName = joinPoint.getSignature().getName();
+        String className = joinPoint.getSignature().getDeclaringTypeName();
+        Object[] args = joinPoint.getArgs();
+
+        System.out.println("Entering method: " + className + "." + methodName);
+        System.out.println("Arguments: " + java.util.Arrays.toString(args));
+
+        Object result;
+        try {
+            // --- Method Execution ---
+            // This is the CRUCIAL part: call proceed() to execute the original method.
+            // Without joinPoint.proceed(), the original method will NOT be executed.
+            result = joinPoint.proceed();
+
+            // --- After Method Returns Successfully ---
+            System.out.println("Exiting method (successfully): " + className + "." + methodName + " with result: " + result);
+
+        } catch (Throwable ex) {
+            // --- After Method Throws Exception ---
+            System.out.println("Method " + className + "." + methodName + " threw an exception: " + ex.getMessage());
+            throw ex; // Re-throw the exception so the caller can handle it
+        } finally {
+            // --- After Method (Regardless of outcome) ---
+            System.out.println("Finally block for method: " + className + "." + methodName);
+        }
+
+        return result; // Return the result of the original method
+    }
+}
+```
+
+-----
+
+## Key Aspects and Methods of `ProceedingJoinPoint`
+
+`ProceedingJoinPoint` is a subinterface of `JoinPoint` and adds the `proceed()` method.
+
+### Methods Inherited from `JoinPoint`:
+
+  * **`Object getThis()`**: Returns the proxy object (the object on which the advised method was called).
+  * **`Object getTarget()`**: Returns the target object (the actual object that the proxy is wrapping).
+  * **`Object[] getArgs()`**: Returns the arguments to the advised method.
+  * **`Signature getSignature()`**: Returns the signature of the advised method. This object (usually `MethodSignature`) provides details like:
+      * `String getName()`: The name of the method.
+      * `String getDeclaringTypeName()`: The fully qualified name of the class where the method is declared.
+      * `Class getReturnType()`: The return type of the method.
+      * `Class<?>[] getParameterTypes()`: The parameter types.
+  * **`SourceLocation getSourceLocation()`**: Returns information about the source location where the join point occurred.
+  * **`String getKind()`**: Returns the kind of join point (e.g., "method-execution").
+  * **`static String toString()`**: A short string representation of the join point.
+  * **`static String toShortString()`**: A very short string representation.
+  * **`static String toLongString()`**: A long string representation.
+
+### Methods Specific to `ProceedingJoinPoint`:
+
+  * **`Object proceed()`**: This is the most important method. It proceeds to the next advice in the chain or to the advised method itself if it's the last advice. You must call this method to ensure the original method execution continues.
+  * **`Object proceed(Object[] args)`**: This version allows you to **modify the arguments** passed to the target method. You can change, add, or remove arguments before the original method executes. The `args` array must match the expected parameter types and count of the original method.
+
+-----
+
+### When to Use `ProceedingJoinPoint`
+
+You **must** use `ProceedingJoinPoint` when writing **`@Around` advice**. No other advice type (like `@Before`, `@After`, `@AfterReturning`, `@AfterThrowing`) uses `ProceedingJoinPoint` because they do not control the execution of the advised method; they simply run *before* or *after* it.
+
+Using `ProceedingJoinPoint` provides maximum control, allowing you to:
+
+  * Perform actions before and after method execution.
+  * Modify arguments.
+  * Suppress exceptions.
+  * Return a different value than the original method.
+  * Even prevent the original method from executing (though this should be done with caution).
+
+Does this explanation of `ProceedingJoinPoint`'s syntax and usage make sense for your AOP needs?
