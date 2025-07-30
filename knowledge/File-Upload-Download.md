@@ -1221,3 +1221,266 @@ public class DownloadController {
 Let me know if you want to support dynamic file selection, MIME type detection, or security checks.
 
 ---
+
+#### Q: If Path contains files and sub direcotry, how to delete it?
+
+To **delete a `Path` that contains files and subdirectories** (i.e. recursively delete a directory tree), you **must walk the file tree** and delete files **before** their parent directories.
+
+---
+
+## ✅ Solution: Use `Files.walk()` + `Files.delete()`
+
+```java
+import java.io.IOException;
+import java.nio.file.*;
+import java.util.Comparator;
+import java.util.stream.Stream;
+
+public class DeletePathRecursive {
+
+    public static void deleteRecursively(Path root) throws IOException {
+        if (!Files.exists(root)) return;
+
+        // Walk the file tree in reverse order (files first, dirs last)
+        try (Stream<Path> stream = Files.walk(root)) {
+            stream.sorted(Comparator.reverseOrder())
+                  .forEach(path -> {
+                      try {
+                          Files.delete(path);
+                      } catch (IOException e) {
+                          throw new RuntimeException("Failed to delete: " + path, e);
+                      }
+                  });
+        }
+    }
+
+    public static void main(String[] args) {
+        Path dir = Paths.get("C:/temp/lib-test/20250730");
+
+        try {
+            deleteRecursively(dir);
+            System.out.println("Deleted: " + dir);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+---
+
+## 🔍 Why `Comparator.reverseOrder()`?
+
+* `Files.walk()` returns paths **top-down** (directory before its contents).
+* We reverse the order so that **files and subdirectories are deleted before their parent directory**.
+
+---
+
+## 🛑 Notes:
+
+* This code **does not prompt** and **will delete everything** under the path.
+* Works only for **local file systems**.
+
+---
+
+Let me know if you want a version using `FileVisitor` (`SimpleFileVisitor`) instead — it's more verbose but gives finer control and better error handling.
+
+---
+
+#### Q: Can not directly delete it?
+
+❌ **No, you cannot directly delete a non-empty directory using `Files.delete(Path)` or `Path.toFile().delete()`** in Java.
+
+Both will throw an exception or return `false` if the directory is not empty.
+
+---
+
+### 📌 What happens if you try?
+
+```java
+Path dir = Paths.get("C:/temp/some-dir");
+Files.delete(dir); // throws DirectoryNotEmptyException
+```
+
+Or:
+
+```java
+File dir = new File("C:/temp/some-dir");
+dir.delete(); // returns false if not empty
+```
+
+---
+
+### ✅ Why?
+
+Java’s standard delete methods are **safe by design** — they don’t allow accidental recursive deletion. You must **explicitly walk the directory tree and delete contents first**, as shown earlier.
+
+---
+
+### ✅ What you *can* do:
+
+| Task                                | Method                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| Delete empty dir                    | `Files.delete(path)`                                                      |
+| Delete file                         | `Files.delete(path)`                                                      |
+| Delete non-empty dir                | `Files.walk(...)` + reverse delete                                        |
+| Use external tool (not recommended) | Call OS-level command via `ProcessBuilder` (e.g. `rm -rf`, `rmdir /s /q`) |
+
+---
+
+Would you like a utility method or helper class that wraps this deletion safely and clearly?
+
+---
+
+#### Q: Paths vs Files
+
+Great question. Here's a clear comparison of `**Paths**` vs `**Files**` in Java:
+
+---
+
+## 🔹 `Paths`: Factory for `Path` objects
+
+* Belongs to: `java.nio.file.Paths`
+* Purpose: **Creates** `Path` instances from strings.
+
+### ✅ Example:
+
+```java
+Path path = Paths.get("C:/temp/data.txt");
+```
+
+That’s almost all `Paths` does — it just **parses a path string** into a `Path` object.
+
+---
+
+## 🔹 `Files`: Utility methods to work with `Path`
+
+* Belongs to: `java.nio.file.Files`
+* Purpose: Provides **static methods** to **read, write, copy, delete, check** files or directories.
+
+### ✅ Examples:
+
+```java
+Files.exists(path);                        // check if exists
+Files.readString(path);                   // read file
+Files.writeString(path, "Hello");         // write file
+Files.copy(path, targetPath);             // copy file
+Files.walk(path);                         // list directory tree
+Files.delete(path);                       // delete file/directory (must be empty)
+Files.isDirectory(path);                  // check if is directory
+```
+
+---
+
+## 🔁 Common Pattern:
+
+You always use them **together** like:
+
+```java
+Path path = Paths.get("C:/temp/file.txt");
+String content = Files.readString(path);
+```
+
+---
+
+## 📌 Summary
+
+| Feature       | `Paths`                     | `Files`                                          |
+| ------------- | --------------------------- | ------------------------------------------------ |
+| Type          | Factory class               | Utility class                                    |
+| Main job      | Create `Path` from `String` | Work with files/directories via `Path`           |
+| Examples      | `Paths.get(...)`            | `Files.readString(...)`, `Files.copy(...)`, etc. |
+| Introduced in | Java 7                      | Java 7                                           |
+
+---
+
+Let me know if you’d like a cheat sheet for common `Files` methods!
+
+---
+
+#### Q: their members?
+
+Here’s a detailed look at the **members** (methods) of `Paths` and `Files` in Java:
+
+---
+
+## 📘 `Paths` – class members (static only)
+
+**Package:** `java.nio.file.Paths`
+**Purpose:** Factory to create `Path` objects.
+
+### ✅ Key static methods:
+
+```java
+static Path get(String first, String... more)
+static Path get(URI uri)
+```
+
+### 🔹 Example:
+
+```java
+Path path1 = Paths.get("C:/temp/data.txt");
+Path path2 = Paths.get("/base", "sub", "file.txt");
+```
+
+✅ That’s it — `Paths` has only **a couple of static methods**.
+
+---
+
+## 📘 `Files` – class members (many static utility methods)
+
+**Package:** `java.nio.file.Files`
+**Purpose:** Read, write, copy, move, delete, and inspect files or directories.
+
+### ✅ Common methods:
+
+```java
+// Existence and type checks
+boolean exists(Path path)
+boolean notExists(Path path)
+boolean isDirectory(Path path)
+boolean isRegularFile(Path path)
+
+// Read / write
+String readString(Path path)                   // Java 11+
+List<String> readAllLines(Path path)
+byte[] readAllBytes(Path path)
+
+Path writeString(Path path, CharSequence csq)  // Java 11+
+Path write(Path path, byte[] bytes)
+
+// File operations
+void delete(Path path)
+Path copy(Path source, Path target, CopyOption...)
+Path move(Path source, Path target, CopyOption...)
+
+// Directory operations
+Stream<Path> walk(Path start)
+DirectoryStream<Path> newDirectoryStream(Path dir)
+
+// Metadata
+long size(Path path)
+FileTime getLastModifiedTime(Path path)
+```
+
+---
+
+## ✅ Summary Table
+
+| Feature                 | `Paths`          | `Files`                               |
+| ----------------------- | ---------------- | ------------------------------------- |
+| Type                    | Utility class    | Utility class                         |
+| Static methods only?    | ✅ Yes            | ✅ Yes                                 |
+| Typical use             | Create `Path`    | Perform file I/O and inspection       |
+| Example                 | `Paths.get(...)` | `Files.readString(path)`              |
+| Java version introduced | Java 7           | Java 7                                |
+| Java 11+ additions      | —                | `readString()`, `writeString()`, etc. |
+
+---
+
+Let me know if you want:
+
+* A full code example showing multiple methods in action.
+* A printable reference chart of `Files` methods.
+
+---
