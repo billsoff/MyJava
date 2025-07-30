@@ -711,3 +711,94 @@ iframe.onload = function() {
 If you want, I can help you implement any of these approaches in Spring MVC + JavaScript!
 
 ---
+
+#### Q: Path.resove("20250730/data.txt"); windows, is valid?
+
+Yes, on Windows, using `Path.resolve("20250730/data.txt")` **is valid** and works as expected.
+
+---
+
+### Explanation:
+
+* `Path.resolve(String other)` treats the argument as a path relative to the current `Path`.
+* The string `"20250730/data.txt"` uses forward slashes `/`.
+* Java’s `Path` API (since Java 7, `java.nio.file.Path`) normalizes separators automatically depending on the OS.
+* So on Windows, forward slashes `/` are internally converted to backslashes `\` when interacting with the filesystem.
+
+---
+
+### Example:
+
+```java
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+public class PathResolveExample {
+    public static void main(String[] args) {
+        Path base = Paths.get("C:\\temp");
+        Path resolved = base.resolve("20250730/data.txt");
+
+        System.out.println(resolved);
+        // Output on Windows: C:\temp\20250730\data.txt
+    }
+}
+```
+
+---
+
+### Summary:
+
+* You can safely use forward slashes `/` in `Path.resolve()`.
+* Java handles path normalization for the platform.
+* No need to manually replace `/` with `\` on Windows.
+
+---
+
+Let me know if you want code for path normalization or joining paths portably!
+
+---
+
+#### Q: Path member?
+
+Here’s a quick overview of common useful members (methods) of the Java `java.nio.file.Path` interface:
+
+---
+
+## Common `Path` members (methods)
+
+| Method                            | Description                                           |
+| --------------------------------- | ----------------------------------------------------- |
+| `Path resolve(String)`            | Resolve a relative path against this path             |
+| `Path resolve(Path)`              | Resolve a Path against this path                      |
+| `Path resolveSibling(String)`     | Resolve path relative to this path’s parent (sibling) |
+| `Path getParent()`                | Get the parent directory path                         |
+| `Path getFileName()`              | Get the filename (last element)                       |
+| `int getNameCount()`              | Number of elements in the path                        |
+| `Path getName(int)`               | Get element at index (0-based)                        |
+| `boolean startsWith(Path/String)` | Test if path starts with given path/string            |
+| `boolean endsWith(Path/String)`   | Test if path ends with given path/string              |
+| `boolean isAbsolute()`            | Whether path is absolute                              |
+| `Path toAbsolutePath()`           | Return absolute path                                  |
+| `Path normalize()`                | Remove redundant `.` and `..` elements                |
+| `File toFile()`                   | Convert Path to `java.io.File`                        |
+| `URI toUri()`                     | Convert Path to URI                                   |
+| `String toString()`               | Convert Path to String representation                 |
+
+---
+
+## Example usage:
+
+```java
+Path path = Paths.get("C:/temp/20250730/data.txt");
+
+System.out.println("File name: " + path.getFileName());
+System.out.println("Parent dir: " + path.getParent());
+System.out.println("Is absolute? " + path.isAbsolute());
+System.out.println("Normalized: " + path.normalize());
+```
+
+---
+
+If you want, I can also show how to manipulate paths with these methods!
+
+---
