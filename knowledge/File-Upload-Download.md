@@ -1484,3 +1484,582 @@ Let me know if you want:
 * A printable reference chart of `Files` methods.
 
 ---
+
+Spring
+------
+
+#### Q: Spring framework, bean as Service to inject container, scope is request. How to declare?
+
+In the Spring Framework, to define a **bean with `request` scope** (i.e., a new instance is created for each HTTP request), you can declare it in several ways depending on how you configure your application (Java-based config, XML, or annotations).
+
+### ✅ Using Annotation (`@Service` + `@Scope`)
+
+For a service bean that is scoped to an HTTP request:
+
+```java
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Service;
+import org.springframework.web.context.WebApplicationContext;
+
+@Service
+@Scope(WebApplicationContext.SCOPE_REQUEST)
+public class MyRequestScopedService {
+    // Your service logic here
+}
+```
+
+---
+
+### 🔍 Important Notes:
+
+* `@Scope("request")` is a shortcut for `@Scope(WebApplicationContext.SCOPE_REQUEST)`.
+* To use `request` scope, the application must run inside a **web-aware Spring ApplicationContext**, such as a Spring MVC application.
+* The class should **not be used in singleton beans** (like controllers or other services) unless accessed through a **proxy** (see below).
+
+---
+
+### ⚠️ If Injecting into Singleton Beans (e.g., Controllers):
+
+Spring can't inject a request-scoped bean directly into a singleton unless you enable proxying:
+
+```java
+@Service
+@Scope(value = WebApplicationContext.SCOPE_REQUEST, proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class MyRequestScopedService {
+    // Logic
+}
+```
+
+Then you can inject it like this:
+
+```java
+@RestController
+public class MyController {
+
+    private final MyRequestScopedService requestScopedService;
+
+    public MyController(MyRequestScopedService requestScopedService) {
+        this.requestScopedService = requestScopedService;
+    }
+
+    @GetMapping("/test")
+    public String test() {
+        return requestScopedService.toString();
+    }
+}
+```
+
+Spring will inject a **proxy** that resolves the actual request-scoped instance at runtime.
+
+---
+
+Let me know if you're using XML config or want examples with `@Bean` or functional configuration.
+
+---
+
+#### Q: When destroyed, can be notified?
+
+Yes, in Spring, you **can be notified when a request-scoped bean is destroyed**, which happens at the **end of the HTTP request**.
+
+### ✅ Option 1: Implement `DisposableBean`
+
+```java
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Service;
+import org.springframework.web.context.WebApplicationContext;
+
+@Service
+@Scope(value = WebApplicationContext.SCOPE_REQUEST, proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class MyRequestScopedService implements DisposableBean {
+
+    @Override
+    public void destroy() throws Exception {
+        System.out.println("Request-scoped bean destroyed");
+    }
+}
+```
+
+---
+
+### ✅ Option 2: Use `@PreDestroy`
+
+```java
+import jakarta.annotation.PreDestroy;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Service;
+import org.springframework.web.context.WebApplicationContext;
+
+@Service
+@Scope(value = WebApplicationContext.SCOPE_REQUEST, proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class MyRequestScopedService {
+
+    @PreDestroy
+    public void onDestroy() {
+        System.out.println("Request-scoped bean is being destroyed");
+    }
+}
+```
+
+This approach is cleaner and preferred in most cases.
+
+---
+
+### 🔍 Notes
+
+* `@PreDestroy` works with both CGLIB and JDK dynamic proxies.
+* Ensure that your Spring context supports lifecycle callbacks — it does by default in Spring Boot and Spring MVC applications.
+* For the `destroy()` or `@PreDestroy` method to be called, the bean must be **fully managed by Spring**, and you must be in a **web environment** where request scope is valid.
+
+Let me know if you're using XML or a non-web context — behavior differs slightly.
+
+---
+
+#### Q: How to let Spring context supports lifecycle callbacks
+
+Spring **supports lifecycle callbacks by default**, but here's how to ensure they work correctly depending on how you're configuring your app:
+
+---
+
+## ✅ For Spring Boot / Spring MVC (Annotation-based)
+
+**No extra config is needed.** If you're using:
+
+* `@Component`, `@Service`, or `@Bean`
+* In a Spring Boot or Spring Web MVC app
+
+Then `@PreDestroy` and `@PostConstruct` **will work out of the box**, as long as:
+
+* The bean is managed by Spring
+* The bean is within a valid scope (e.g., `singleton`, `request`)
+* You're in a servlet-based web environment (for `request` scope)
+
+---
+
+## ✅ For Java Config (Manual Context)
+
+If you create the `AnnotationConfigApplicationContext` or `WebApplicationContext` manually, make sure to register a shutdown hook:
+
+```java
+AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(MyConfig.class);
+context.registerShutdownHook(); // Ensures @PreDestroy is called on shutdown
+```
+
+If it's a **web app**, Spring will automatically handle this via the `DispatcherServlet` and `ContextLoaderListener`.
+
+---
+
+## ✅ For `@Bean` Methods
+
+If you declare beans via `@Bean`, lifecycle callbacks also work:
+
+```java
+@Configuration
+public class MyConfig {
+
+    @Bean
+    @Scope(WebApplicationContext.SCOPE_REQUEST)
+    @Scope(proxyMode = ScopedProxyMode.TARGET_CLASS)
+    public MyService myService() {
+        return new MyService();
+    }
+}
+```
+
+In the `MyService` class:
+
+```java
+public class MyService {
+    @PreDestroy
+    public void destroy() {
+        System.out.println("Destroying MyService");
+    }
+}
+```
+
+---
+
+## 🧩 Troubleshooting
+
+If `@PreDestroy` or `DisposableBean.destroy()` is **not being called**, check:
+
+| Cause                                      | Fix                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Not a Spring-managed bean                  | Make sure the bean is annotated with `@Component`, `@Service`, or defined as `@Bean` |
+| `@PreDestroy` method is `private`          | It must be `public` or at least `protected/package`                                  |
+| Not using proxy for `request`-scoped bean  | Use `proxyMode = ScopedProxyMode.TARGET_CLASS`                                       |
+| Custom lifecycle not enabled in XML config | See below                                                                            |
+
+---
+
+## 🛠 For XML Configuration
+
+If you're using XML, include:
+
+```xml
+<context:annotation-config />
+<context:component-scan base-package="com.example" />
+```
+
+And register context shutdown:
+
+```java
+context.registerShutdownHook();
+```
+
+---
+
+Let me know your setup (Spring Boot, plain Spring, Spring MVC, etc.), and I can tailor this further.
+
+---
+
+#### Q: Controller can be declare in request scope?
+
+In **Spring MVC**, you **should not** declare a `@Controller` with `request` scope — it’s technically possible, but **strongly discouraged**. Here's why:
+
+---
+
+## 🚫 Why You Should NOT Use `@Scope("request")` on Controllers
+
+### 1. **Controllers are meant to be singletons**
+
+* By default, Spring MVC treats `@Controller` beans as **singleton**.
+* Controllers are **stateless** and thread-safe by design — they handle requests, not hold per-request data.
+
+### 2. **Using `@Scope("request")` on controllers can cause:**
+
+* Memory inefficiency (instantiating a controller per request)
+* Unexpected behavior with Spring MVC's internal dispatching
+* Errors during handler mapping initialization
+
+---
+
+## ✅ Correct Way: Keep Controller Singleton, Inject Request-Scoped Bean
+
+If you need per-request state, inject a **request-scoped bean** into your singleton controller using a **proxy**.
+
+```java
+@Service
+@Scope(value = WebApplicationContext.SCOPE_REQUEST, proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class RequestScopedService {
+    public String getRequestId() {
+        return UUID.randomUUID().toString();
+    }
+}
+```
+
+```java
+@RestController
+public class MyController {
+
+    private final RequestScopedService requestScopedService;
+
+    public MyController(RequestScopedService requestScopedService) {
+        this.requestScopedService = requestScopedService;
+    }
+
+    @GetMapping("/test")
+    public String test() {
+        return "Request ID: " + requestScopedService.getRequestId();
+    }
+}
+```
+
+This approach:
+
+* Keeps the controller efficient and singleton
+* Provides request-specific logic through the injected service
+* Fully supported and idiomatic in Spring
+
+---
+
+### ✅ TL;DR
+
+\| Can you do `@Scope("request")` on `@Controller`? | **Yes, but don't.** |
+\| Best practice | Keep controller singleton, inject request-scoped service with proxy |
+
+Let me know your use case — maybe we can find an alternative pattern if you're trying to store or access per-request data in the controller.
+
+---
+
+#### Q: Request scope bean can be declared in controller action method?
+
+Yes, you **can declare a request-scoped bean as a method parameter in a controller action** — **but only if** the bean is a **Spring-managed component** and its injection is supported via **Spring MVC’s argument resolvers**.
+
+However, **standard Spring beans** (like `@Service`, `@Component`) are **not directly injectable via controller method parameters** **unless** you write a **custom argument resolver**, which is uncommon and advanced.
+
+---
+
+### ✅ What you *can* inject directly into controller methods:
+
+These are automatically available per request:
+
+```java
+@GetMapping("/example")
+public String handleRequest(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        HttpSession session,
+        @RequestParam String param,
+        @ModelAttribute MyModel model
+) {
+    ...
+}
+```
+
+---
+
+### ✅ Recommended: Let Spring inject request-scoped beans via constructor or field (with proxy)
+
+If you have a request-scoped bean:
+
+```java
+@Service
+@Scope(value = WebApplicationContext.SCOPE_REQUEST, proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class MyRequestScopedService {
+    public String getId() {
+        return UUID.randomUUID().toString();
+    }
+}
+```
+
+Inject it into your controller:
+
+```java
+@RestController
+public class MyController {
+
+    private final MyRequestScopedService service;
+
+    public MyController(MyRequestScopedService service) {
+        this.service = service;
+    }
+
+    @GetMapping("/test")
+    public String test() {
+        return service.getId();
+    }
+}
+```
+
+---
+
+### ❌ NOT directly like this (won’t work without custom config):
+
+```java
+@GetMapping("/fail")
+public String badMethod(MyRequestScopedService service) {
+    // This will NOT inject the Spring bean unless using a custom resolver
+}
+```
+
+---
+
+### 🛠 If you insist on per-method control (advanced):
+
+You would need a **custom `HandlerMethodArgumentResolver`** to inject arbitrary beans into controller parameters. Not recommended unless you have a strong reason.
+
+---
+
+### ✅ Summary
+
+| Goal                                                        | Supported?                                                  | Recommendation                                |
+| ----------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- |
+| Inject request-scoped bean into controller method parameter | ❌ Not directly                                              | Use constructor or field injection with proxy |
+| Inject `HttpServletRequest`, session, param, model, etc.    | ✅ Yes                                                       | Built-in support                              |
+| Declare per-request bean instance manually                  | ✅ You can create a new instance inside method (not managed) | But better to use `@Scope("request")` bean    |
+
+Let me know your scenario if you’re trying to inject a bean only sometimes — I can suggest alternatives.
+
+---
+
+#### Q: I don't want to use proxy
+
+If you **don't want to use proxy** but still want to use a **request-scoped bean**, you have two main options:
+
+---
+
+## ✅ Option 1: Manually retrieve the request-scoped bean from the `RequestContext`
+
+This avoids using `proxyMode`, but you must **manually get the bean** from Spring’s context within the controller.
+
+### Step 1: Register `RequestScope` bean normally (no proxy):
+
+```java
+@Service
+@Scope(WebApplicationContext.SCOPE_REQUEST) // No proxyMode
+public class MyRequestScopedService {
+    public String getRequestId() {
+        return UUID.randomUUID().toString();
+    }
+}
+```
+
+### Step 2: Access it manually in controller using `WebApplicationContext`
+
+```java
+@RestController
+public class MyController {
+
+    private final ObjectFactory<WebApplicationContext> contextFactory;
+
+    public MyController(ObjectFactory<WebApplicationContext> contextFactory) {
+        this.contextFactory = contextFactory;
+    }
+
+    @GetMapping("/test")
+    public String test() {
+        WebApplicationContext context = contextFactory.getObject();
+        MyRequestScopedService service = context.getBean(MyRequestScopedService.class);
+        return service.getRequestId();
+    }
+}
+```
+
+This way:
+
+* The bean is **really request-scoped** (one instance per request)
+* **No proxy is used**
+* Spring manages lifecycle correctly
+* Works even if controller is singleton
+
+---
+
+## ✅ Option 2: Create per-request instance manually (not Spring-managed)
+
+If you just want a per-request instance and **don’t need Spring lifecycle management**, you can do:
+
+```java
+@GetMapping("/test")
+public String test() {
+    MyRequestScopedService service = new MyRequestScopedService();
+    return service.getRequestId();
+}
+```
+
+But this **defeats the purpose of Spring DI** — not recommended unless it's very lightweight or you're intentionally avoiding Spring for that class.
+
+---
+
+## ✅ Option 3: Use method-level scoped bean via `RequestScope` + `ObjectProvider`
+
+Spring provides `ObjectProvider` (lazy injection) — no proxy, and easy:
+
+```java
+@RestController
+public class MyController {
+
+    private final ObjectProvider<MyRequestScopedService> serviceProvider;
+
+    public MyController(ObjectProvider<MyRequestScopedService> serviceProvider) {
+        this.serviceProvider = serviceProvider;
+    }
+
+    @GetMapping("/test")
+    public String test() {
+        MyRequestScopedService service = serviceProvider.getIfAvailable();
+        return service.getRequestId();
+    }
+}
+```
+
+This **does not require proxying**, but the service must still be request-scoped. Spring will lazily resolve the correct instance for this request.
+
+---
+
+## ✅ Summary
+
+| Approach                                  | Uses Proxy? | Spring-managed? | Recommended?              |
+| ----------------------------------------- | ----------- | --------------- | ------------------------- |
+| `@Scope("request")` + proxy               | ✅ Yes       | ✅ Yes           | ✅ Best Practice           |
+| Manual lookup via `WebApplicationContext` | ❌ No        | ✅ Yes           | ✅ If you don't want proxy |
+| `ObjectProvider<MyRequestScopedService>`  | ❌ No        | ✅ Yes           | ✅ Lazy and clean          |
+| `new MyService()` inside method           | ❌ No        | ❌ No            | ❌ Not recommended         |
+
+---
+
+Let me know your reason for avoiding proxy — sometimes there's a better architectural workaround.
+
+---
+
+#### Q: Request scope bean can autowire singleton bean?
+
+### ❌ No — a **request-scoped bean should NOT autowire a singleton bean** *in the usual sense* (where the singleton depends on the request-scoped bean), because it reverses the correct lifecycle dependency.
+
+---
+
+## ⚠️ Why?
+
+* **Singleton beans** are created **once** when the Spring context starts.
+* **Request-scoped beans** are created **per HTTP request**.
+* If a **singleton depends on a request-scoped bean**, Spring would need to inject something that **doesn’t exist yet** (since there’s no HTTP request during startup).
+* This causes errors like:
+
+  ```
+  Scope 'request' is not active for the current thread
+  ```
+
+---
+
+## ✅ Correct Direction: Request-scoped bean can depend on singleton
+
+This is safe and common:
+
+```java
+@Service
+@Scope(WebApplicationContext.SCOPE_REQUEST)
+public class MyRequestScopedService {
+    private final MySingletonService singleton;
+
+    @Autowired
+    public MyRequestScopedService(MySingletonService singleton) {
+        this.singleton = singleton;
+    }
+}
+```
+
+Here:
+
+* `singleton` is available at all times.
+* The request-scoped bean is created per request and injected with the singleton.
+
+---
+
+## ✅ If absolutely necessary: Use `ObjectFactory` or `ObjectProvider` in the singleton
+
+If you **must** access a request-scoped bean from a singleton (e.g., for logging request data), use **lazy access**:
+
+```java
+@Service
+public class MySingletonService {
+
+    @Autowired
+    private ObjectProvider<MyRequestScopedService> requestScopedServiceProvider;
+
+    public void doSomething() {
+        MyRequestScopedService service = requestScopedServiceProvider.getIfAvailable();
+        if (service != null) {
+            System.out.println(service.getRequestId());
+        }
+    }
+}
+```
+
+This:
+
+* Avoids early initialization
+* Defers access to request time
+* Avoids proxy if you don’t want one
+
+---
+
+## ✅ Summary
+
+| Pattern                                               | Safe?                    | Notes                                             |
+| ----------------------------------------------------- | ------------------------ | ------------------------------------------------- |
+| Singleton → Request-scoped bean                       | ❌ Dangerous              | Causes scope errors unless using `ObjectProvider` |
+| Request-scoped → Singleton                            | ✅ Safe                   | Standard pattern                                  |
+| Singleton accessing request bean via proxy            | ✅ If proxy used          | Works, but you said no proxy                      |
+| Singleton accessing request bean via `ObjectProvider` | ✅ Preferred for no-proxy | Lazy and safe                                     |
+
+---
