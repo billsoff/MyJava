@@ -1148,3 +1148,76 @@ Path path = file.toPath();
 Let me know if you want a quick cheat sheet for replacing `File` with `Path`!
 
 ---
+
+#### Q: Path download
+
+If you're asking how to **download a file represented by a `Path` in a Spring MVC web app**, here’s how to do it cleanly using a `Path` object directly.
+
+---
+
+## ✅ 1. Spring Controller: Download a File from `Path`
+
+```java
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.*;
+
+@RestController
+public class DownloadController {
+
+    @GetMapping("/download")
+    public void downloadFile(HttpServletResponse response) throws IOException {
+        // The file to download
+        Path path = Paths.get("C:/temp/20250730/data.txt");
+
+        if (!Files.exists(path) || !Files.isRegularFile(path)) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+
+        // Set response headers
+        response.setContentType("application/octet-stream");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + path.getFileName() + "\"");
+        response.setContentLengthLong(Files.size(path));
+
+        // Copy file content to response
+        try (OutputStream out = response.getOutputStream()) {
+            Files.copy(path, out);
+            out.flush();
+        }
+    }
+}
+```
+
+---
+
+## ✅ 2. HTML Trigger (e.g., from iframe or link)
+
+```html
+<!-- Using an iframe -->
+<iframe id="downloadFrame" style="display:none;"></iframe>
+<button onclick="document.getElementById('downloadFrame').src = '/download';">
+  Download
+</button>
+
+<!-- OR using a direct link -->
+<a href="/download">Download File</a>
+```
+
+---
+
+## 🔍 Notes:
+
+* `Files.copy(path, OutputStream)` directly streams the file — efficient and avoids loading the full content into memory.
+* You’re using the `Path` API **without needing `File`** at all.
+* The filename is extracted with `path.getFileName()`.
+
+---
+
+Let me know if you want to support dynamic file selection, MIME type detection, or security checks.
+
+---
